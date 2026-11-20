@@ -1,0 +1,35 @@
+# NexVora starter blocklist: widely known advertising / tracking hosts.
+# One host per line. Subdomains are matched. Users can import larger hosts-format lists in Settings.
+doubleclick.net
+googlesyndication.com
+googleadservices.com
+adservice.google.com
+google-analytics.com
+googletagmanager.com
+googletagservices.com
+adnxs.com
+adsrvr.org
+advertising.com
+criteo.com
+criteo.net
+taboola.com
+outbrain.com
+scorecardresearch.com
+quantserve.com
+amazon-adsystem.com
+rubiconproject.com
+pubmatic.com
+openx.net
+casalemedia.com
+moatads.com
+2mdn.net
+hotjar.com
+mixpanel.com
+segment.io
+adjust.com
+appsflyer.com
+mc.yandex.ru
+ads.twitter.com
+analytics.twitter.com
+ads.linkedin.com
+bat.bing.com

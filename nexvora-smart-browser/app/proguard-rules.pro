@@ -1,0 +1,7 @@
+-keepattributes *Annotation*, InnerClasses
+-keep,includedescriptorclasses class com.nexvora.smartbrowser.**$$serializer { *; }
+-keepclassmembers class com.nexvora.smartbrowser.** { *** Companion; }
+-keepclasseswithmembers class com.nexvora.smartbrowser.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep class com.google.mediapipe.** { *; }
+-dontwarn com.google.mediapipe.**
+-dontwarn com.google.protobuf.**
