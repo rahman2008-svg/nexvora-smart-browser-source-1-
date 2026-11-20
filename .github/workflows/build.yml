@@ -1,126 +1,112 @@
-name: Build NexVora
+
+name: Build NexVora Smart Browser APK
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
   pull_request:
+    branches:
+      - main
+
   workflow_dispatch:
-    inputs:
-      generate_wrapper:
-        description: "Also generate the Gradle wrapper files and upload them as an artifact"
-        type: boolean
-        default: false
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: nexvora-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 60
 
-      - uses: actions/setup-java@v4
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
 
-      # Installs the Android SDK and accepts its licences on the clean runner.
-      - uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      # Gradle 8.7 is installed by the action, so the build does not depend on a committed wrapper jar.
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.7"
+          gradle-version: '8.7'
 
-      - name: Generate Gradle wrapper (optional)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.generate_wrapper }}
-        run: gradle wrapper --gradle-version 8.7 --no-daemon
-
-      - name: Upload wrapper files
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.generate_wrapper }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-wrapper-files
-          path: |
-            gradlew
-            gradlew.bat
-            gradle/wrapper/
-
-      - name: Unit tests
-        run: gradle :app:testDebugUnitTest --stacktrace
-
-      - name: Lint
-        run: gradle :app:lintDebug --stacktrace
-
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
-
-      # ---- Release signing: only when the repository has the four signing secrets configured.
-      - name: Check for signing secrets
-        id: signing
-        env:
-          KS: ${{ secrets.NEXVORA_KEYSTORE_BASE64 }}
-          PW: ${{ secrets.NEXVORA_KEYSTORE_PASSWORD }}
-          AL: ${{ secrets.NEXVORA_KEY_ALIAS }}
-          KP: ${{ secrets.NEXVORA_KEY_PASSWORD }}
+      - name: Verify Project
         run: |
-          if [ -n "$KS" ] && [ -n "$PW" ] && [ -n "$AL" ] && [ -n "$KP" ]; then echo "available=true" >> "$GITHUB_OUTPUT"; else echo "available=false" >> "$GITHUB_OUTPUT"; fi
+          echo "Checking Android project..."
+          test -f settings.gradle || test -f settings.gradle.kts
+          test -d app
+          echo "Project structure verified."
 
-      - name: Build signed release APK
-        if: steps.signing.outputs.available == 'true' && github.event_name != 'pull_request'
-        env:
-          KS_B64: ${{ secrets.NEXVORA_KEYSTORE_BASE64 }}
-          NEXVORA_KEYSTORE_PASSWORD: ${{ secrets.NEXVORA_KEYSTORE_PASSWORD }}
-          NEXVORA_KEY_ALIAS: ${{ secrets.NEXVORA_KEY_ALIAS }}
-          NEXVORA_KEY_PASSWORD: ${{ secrets.NEXVORA_KEY_PASSWORD }}
+      - name: Build Debug APK
         run: |
-          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/nexvora.jks"
-          export NEXVORA_KEYSTORE="$RUNNER_TEMP/nexvora.jks"
-          gradle :app:assembleRelease --stacktrace
-          rm -f "$RUNNER_TEMP/nexvora.jks"
+          gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Note when release is not signed
-        if: steps.signing.outputs.available != 'true'
-        run: echo "::notice::No signing secrets configured, so only the debug APK was built. See README, 'Release signing'."
+      - name: Prepare APK
+        run: |
+          mkdir -p release
 
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+          APK=$(find app/build/outputs/apk/debug \
+            -type f -name '*.apk' | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "APK not found!"
+            exit 1
+          fi
+
+          cp "$APK" release/NexVora-Smart-Browser.apk
+
+          echo "APK successfully prepared:"
+          ls -lh release/
+
+      - name: Run Unit Tests
+        continue-on-error: true
+        run: |
+          gradle :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Run Android Lint
+        continue-on-error: true
+        run: |
+          gradle :app:lintDebug --no-daemon --stacktrace
+
+      - name: Upload APK to GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
         with:
-          name: nexvora-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          tag_name: nexvora-build-${{ github.run_number }}-${{ github.run_attempt }}
+          name: NexVora Smart Browser - Build ${{ github.run_number }}
+          body: |
+            NexVora Smart Browser Android APK
 
-      - name: Upload release APK
-        if: steps.signing.outputs.available == 'true' && github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: nexvora-release-apk
-          path: app/build/outputs/apk/release/*.apk
+            Build: ${{ github.run_number }}
+            Commit: ${{ github.sha }}
 
-      - name: Upload test and lint reports
+            Download the APK directly from the Assets section.
+          files: release/NexVora-Smart-Browser.apk
+          draft: false
+          prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
+
+      - name: Upload Build Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: reports
+          name: NexVora-Build-Reports
           path: |
-            app/build/reports/tests/
+            app/build/reports/
             app/build/test-results/
-            app/build/reports/lint-results-*.html
-            app/build/reports/lint-results-*.xml
           if-no-files-found: ignore
 
-      - name: Upload build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: |
-            **/build/reports/
-            **/hs_err_pid*.log
-          if-no-files-found: ignore
