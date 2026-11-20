@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.nexvora.smartbrowser.browser.BrowserHost
 import com.nexvora.smartbrowser.browser.BrowserTab
 import com.nexvora.smartbrowser.browser.UrlUtils
