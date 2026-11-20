@@ -1,5 +1,5 @@
 
-name: Build NexVora Smart Browser APK
+name: Build NexVora Smart Browser
 
 on:
   push:
@@ -16,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: nexvora-build-${{ github.ref }}
+  group: nexvora-smart-browser-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,80 +26,112 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout Source
+      # 1. Download source code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # 2. Install Java
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      # 3. Install Android SDK
+      # v4 fixes the deprecated SDK tools package issue.
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
-      - name: Setup Gradle
+      # 4. Install Gradle
+      - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
 
-      - name: Verify Project
+      # 5. Verify Android project
+      - name: Verify Project Structure
         run: |
-          echo "Checking Android project..."
-          test -f settings.gradle || test -f settings.gradle.kts
-          test -d app
+          echo "Checking project..."
+
+          test -d app || {
+            echo "ERROR: app directory not found"
+            exit 1
+          }
+
+          if [ ! -f settings.gradle ] && [ ! -f settings.gradle.kts ]; then
+            echo "ERROR: Gradle settings file not found"
+            exit 1
+          fi
+
           echo "Project structure verified."
 
+      # 6. Build Debug APK
       - name: Build Debug APK
         run: |
-          gradle :app:assembleDebug --no-daemon --stacktrace
+          gradle :app:assembleDebug \
+            --no-daemon \
+            --stacktrace
 
+      # 7. Prepare APK
       - name: Prepare APK
         run: |
           mkdir -p release
 
           APK=$(find app/build/outputs/apk/debug \
-            -type f -name '*.apk' | head -n 1)
+            -type f -name '*.apk' -print -quit)
 
           if [ -z "$APK" ]; then
-            echo "APK not found!"
+            echo "ERROR: Debug APK not found"
             exit 1
           fi
 
           cp "$APK" release/NexVora-Smart-Browser.apk
 
-          echo "APK successfully prepared:"
+          echo "APK ready:"
           ls -lh release/
 
+      # 8. Unit Tests
       - name: Run Unit Tests
         continue-on-error: true
         run: |
-          gradle :app:testDebugUnitTest --no-daemon --stacktrace
+          gradle :app:testDebugUnitTest \
+            --no-daemon \
+            --stacktrace
 
+      # 9. Android Lint
       - name: Run Android Lint
         continue-on-error: true
         run: |
-          gradle :app:lintDebug --no-daemon --stacktrace
+          gradle :app:lintDebug \
+            --no-daemon \
+            --stacktrace
 
-      - name: Upload APK to GitHub Release
+      # 10. Publish direct APK
+      - name: Publish APK to GitHub Releases
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nexvora-build-${{ github.run_number }}-${{ github.run_attempt }}
-          name: NexVora Smart Browser - Build ${{ github.run_number }}
+          name: NexVora Smart Browser Build ${{ github.run_number }}
           body: |
-            NexVora Smart Browser Android APK
+            # NexVora Smart Browser
 
-            Build: ${{ github.run_number }}
+            Android APK Release
+
+            Build Number: ${{ github.run_number }}
             Commit: ${{ github.sha }}
 
-            Download the APK directly from the Assets section.
-          files: release/NexVora-Smart-Browser.apk
+            Download the APK from Assets below.
+
+          files: |
+            release/NexVora-Smart-Browser.apk
+
           draft: false
           prerelease: false
           make_latest: true
           fail_on_unmatched_files: true
 
+      # 11. Upload test reports
       - name: Upload Build Reports
         if: always()
         uses: actions/upload-artifact@v4
